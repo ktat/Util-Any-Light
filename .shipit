@@ -1,0 +1,7 @@
+steps = FindVersion, ChangeVersion, CheckChangeLog, DistTest, Commit, Tag, MakeDist, UploadCPAN, Twitter
+
+svk.tagpattern = Util-Any-Light-%v
+
+twitter.config = ~/.twitterrc
+twitter.distname = Util-Any-Light
+twitter.message = shipped %d %v - soon at %u
