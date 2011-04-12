@@ -406,8 +406,7 @@ sub _base_import {
       # pluggable
       require Module::Pluggable;
       Module::Pluggable->import(require => 0, search_path => [$caller . '::Plugin'], inner => 0);
-      my @plugins = $pkg->plugins;
-      *{$caller . '::_plugins'} = sub { \@plugins };
+      *{$caller . '::_plugins'} = sub { [$pkg->plugins] };
     } elsif ($flg ne '-base') {
       push @unknown, $flg;
     }
