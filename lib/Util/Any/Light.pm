@@ -136,12 +136,23 @@ sub _kind_exporter {
             foreach my $def (@{$local_definition->{$function}}) {
               my %arg;
               $arg{$_} = $def->{$_} for grep !/^-/, keys %$def;
-              install_subroutine($caller  => ($def->{-as} || $function)
-                                              => $gen->($pkg, $class, $function, \%arg, $kind_args));
+              if ($config_options->{-no_redefine}) {
+                no warnings ('redefine');
+                install_subroutine($caller  => ($def->{-as} || $function)
+                                       => $gen->($pkg, $class, $function, \%arg, $kind_args));
+              } else {
+                install_subroutine($caller  => ($def->{-as} || $function)
+                                       => $gen->($pkg, $class, $function, \%arg, $kind_args));
+              }
             }
           } else {
             if ($function ne '.') {
-              install_subroutine($caller => $prefix . $function => $gen->($pkg, $class, $function, {}, $kind_args));
+              if ($config_options->{-no_redefine}) {
+                no warnings ('redefine');
+                install_subroutine($caller => $prefix . $function => $gen->($pkg, $class, $function, {}, $kind_args));
+              } else {
+                install_subroutine($caller => $prefix . $function => $gen->($pkg, $class, $function, {}, $kind_args));
+              }
             } else {
               $gen->($pkg, $class, $function, {}, $kind_args);
             }
@@ -477,7 +488,7 @@ When you use both renaming and your own prefix ?
 
 This module is separated from Util::Any and simplize it.
 Util::Any::Light doesn't export any utility functions.
-It is only for creating your own utility module.
+It is only for creating your own utility modules.
 
 Perl has many modules and they have many utility functions.
 For example, List::Util, List::MoreUtils, Scalar::Util, Hash::Util,
@@ -490,7 +501,7 @@ For example:
       -data   => [ qw/Scalar::Util/ ],
       -hash   => [ qw/Hash::Util/ ],
 
-=head1 WHAT IS DIFFERENCE FROM Util::Any?
+=head1 WHAT DIFFERENCES ARE BETWEEN L<Util::Any> and Util::Any::Light?
 
 Util::Any::Light B<doesn't> export any utility functions.
 This is only for creating utility modules. It is no use itself.
@@ -506,6 +517,10 @@ I think Util::Any's module_prefix is no use and confusing. So, removed.
 =item * work with Exporter-like modules(Exporter, Sub::Exporter etc)
 
 Uti::Any can work with Export-like modules. But Util::Any::Light cannot.
+
+=item * use Data::Util::install_subroutine instead of ExportTo
+
+It is faster than ExportTo.
 
 =back
 
@@ -1035,6 +1050,12 @@ L<http://search.cpan.org/dist/Util-Any-Light>
 
 git repository of Util::Any::Light is hosted at http://github.com/.
 patches and collaborators are welcome.
+
+=head1 SEE ALSO
+
+ Util::Any
+
+Large part of Util::Any::Light is copied from L<Util::Any>.
 
 =head1 ACKNOWLEDGEMENTS
 
