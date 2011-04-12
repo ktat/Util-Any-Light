@@ -26,6 +26,8 @@ sub _uniq (@) {
 }
 # /end
 
+sub _default_kinds { }
+
 sub import {
   my ($pkg, $caller) = (shift, (caller)[0]);
 
@@ -77,7 +79,12 @@ sub import {
   }
   $config = Clone::clone($config);
 
-  my ($arg, $want_kind) = $pkg->_arrange_args(\@_, $config, $caller, \%opt);
+  my ($arg, $want_kind) = $pkg->_arrange_args
+    ([
+      @_ ? ($_[0] =~m{^[-:]?all$}i ?  ($_[0], $pkg->_default_kinds, @_[1 .. $#_]) : ($pkg->_default_kinds, @_))
+         : ($pkg->_default_kinds)
+     ],
+     $config, $caller, \%opt);
   foreach my $kind (keys %$want_kind) {
     # Carp::croak "$pkg doesn't have such kind of functions : $kind"
     # unless exists $config->{$kind};
@@ -93,12 +100,13 @@ sub _kind_exporter {
   foreach my $class_config (@$kind_config) { # $class_config is class name or array ref
     my ($class, $config_options, $config_options_old) = ref $class_config ? @$class_config : ($class_config, '');
 
-    # $config_options_old is module_prefix in Util::Any
-    $config_options = $config_options_old if defined $config_options_old;
+    # if $config_options_old, Util::Any definision. $config_options is module_prefix, so replace it.
+    $config_options = $config_options_old if defined $config_options_old and $config_options_old;
 
     my $evalerror = '';
     if ($evalerror = do { local $@; eval {Class::Load::load_class($class); $evalerror = $@ }; $@}) {
-      $opt->{debug} == 2 ? Carp::croak $evalerror : Carp::carp $evalerror;
+      my $msg = "while loading $class: $evalerror";
+      $opt->{debug} == 2 ? Carp::croak "ERROR: " . $msg : Carp::carp "WARN: " . $msg;
     }
 
     $prefix = $kind_prefix                       ? $kind_prefix                           :
@@ -127,19 +135,20 @@ sub _kind_exporter {
           if (exists $local_definition->{$function}) {
             foreach my $def (@{$local_definition->{$function}}) {
               my %arg;
-              $arg{$_} = $def->{$_}  for grep !/^-/, keys %$def;
-              my $sub = $gen->($pkg, $class, $function, \%arg, $kind_args);
-              Carp::croak("must return code ref for function ". ($def->{-as} || $function)) if ref $sub ne 'CODE';
-              install_subroutine($caller, ($def->{-as} || $function) => $sub );
+              $arg{$_} = $def->{$_} for grep !/^-/, keys %$def;
+              install_subroutine($caller  => ($def->{-as} || $function)
+                                              => $gen->($pkg, $class, $function, \%arg, $kind_args));
             }
           } else {
-            my $sub = $gen->($pkg, $class, $function, {}, $kind_args);
-            Carp::croak("must return code ref for function $function") if ref $sub ne 'CODE';
-            install_subroutine($caller => $prefix . $function => $sub);
+            if ($function ne '.') {
+              install_subroutine($caller => $prefix . $function => $gen->($pkg, $class, $function, {}, $kind_args));
+            } else {
+              $gen->($pkg, $class, $function, {}, $kind_args);
+            }
           }
           $exported{$function} = undef;
         } elsif (defined &{$class . '::' . $function}) {
-          push @funcs , $function;
+          push @funcs, $function;
           $rename{$function} = $config_options->{$function};
         }
       }
@@ -255,7 +264,11 @@ sub _arrange_args {
     if (_any {ref $_} @$org_args) {
       for (my $i = 0; $i < @$org_args; $i++) {
         my $kind = $org_args->[$i];
-        my $import_setting = ref $org_args->[$i + 1] ? $org_args->[++$i] : undef;
+        my $ref = ref $org_args->[$i + 1];
+        my $import_setting =  $ref ? $org_args->[++$i] : undef;
+        if ($ref eq 'ARRAY' and !@$import_setting) {
+          $import_setting = [''];
+        }
         _insert_want_arg($config, $kind, $import_setting, \%want_kind, \@arg);
       }
     } else {
@@ -303,8 +316,8 @@ sub _lazy_load_plugins {
   for my $i (0 .. $#{$org_args}) {
     next if ref $org_args->[$i];
     my $k = $org_args->[$i];
-    $k =~ s{\W}{}g;
-    $k =~ s{_}{::}g;
+    $k =~ s{\W}{}go;
+    $k =~ s{_}{::}go;
     $k =~ s{^(.+)(::all)$}{$1|${1}::\\w+} and push @all, $i;
     push @kinds, $k;
   }
@@ -319,10 +332,11 @@ sub _lazy_load_plugins {
   my $is_loaded = do {no strict 'refs'; ${$pkg . '::UtilsIsLoaded'} ||= {}};
   foreach my $plugin (@{$pkg->_plugins}) {
     if ($plugin =~m{$regex\W}i or $plugin =~m{$regex$}i) {
-      next if $is_loaded->{$plugin};
-      $is_loaded->{$plugin} = 1;
-      eval {Class::Load::load_class($plugin)};
-      next if $@;
+      unless ($is_loaded->{$plugin}) {
+        eval {Class::Load::load_class($plugin)};
+        next if $@;
+        $is_loaded->{$plugin} = 1;
+      }
       my $util = $plugin->utils;
       foreach my $kind (keys %$util) {
         push @{$config->{$kind} ||= []}, @{$util->{$kind}};
@@ -338,7 +352,7 @@ sub _func_definitions {
   my ($pkg, $want_func_definition) = @_;
   my ($kind_prefix, $kind_args, @wanted_funcs, %funcs, %local_definition);
   if (ref $want_func_definition eq 'HASH') {
-    # list => {func => {-as => 'rename'}};  list => {-prefix => 'hoge_' }
+    # list => {func => {-as => 'rename'}}; list => {-prefix => 'hoge_' }
     $kind_prefix = $want_func_definition->{-prefix}
       if exists $want_func_definition->{-prefix};
     $kind_args = $want_func_definition->{-args}
@@ -461,7 +475,7 @@ When you use both renaming and your own prefix ?
 
 =head1 DESCRIPTION
 
-This module is separated and simplize Util::Any.
+This module is separated from Util::Any and simplize it.
 Util::Any::Light doesn't export any utility functions.
 It is only for creating your own utility module.
 
@@ -469,22 +483,31 @@ Perl has many modules and they have many utility functions.
 For example, List::Util, List::MoreUtils, Scalar::Util, Hash::Util,
 String::Util, String::CamelCase, Data::Dumper etc.
 
-You can collect their functions group by kind of them.
-For example,
+You can collect their functions and group them by their kind as you like.
+For example:
 
       -list   => [ qw/List::Util List::MoreUtils List::Pairwise/ ],
       -data   => [ qw/Scalar::Util/ ],
       -hash   => [ qw/Hash::Util/ ],
 
-like that.
-
 =head1 WHAT IS DIFFERENCE FROM Util::Any?
 
-Util::Any::Light doesn't export any utility functions.
+Util::Any::Light B<doesn't> export any utility functions.
 This is only for creating utility modules. It is no use itself.
 The way to define utility functions is as nealy same as Util::Any.
-But C<module_prefix> feature is removed from Util::Any::Light.
-And Util::Any::Light canB<not> work with Exporter-like modules(Exporter, Sub::Exporter etc).
+But the following feature of Util::Any is removed:
+
+=over 4
+
+=item * module_prefix
+
+I think Util::Any's module_prefix is no use and confusing. So, removed.
+
+=item * work with Exporter-like modules(Exporter, Sub::Exporter etc)
+
+Uti::Any can work with Export-like modules. But Util::Any::Light cannot.
+
+=back
 
 =head1 CREATE YOUR OWN UTILITY MODULES
 
@@ -505,7 +528,7 @@ In your code;
 
  use Util::Yours -list;
 
-=head2 C<utils> method STRUCTURE
+=head2  STRUCTURE OF HASH REFERENCE WHICH C<utils> RETURNS
 
 =head3 overview
 
@@ -871,6 +894,53 @@ And write as the following:
 
 thousands_sep and int_curr_symbol are given to all of -number kind of function.
 
+=head4 GIVE DEFAULT ARGUMENTS TO CODE GENERATOR
+
+You may want to give default arguments to all code generators in same kind.
+For example, if you create shortcut to use Number::Format,
+you may want to give common arguments with creating instance.
+
+ -number => [
+    [ 'Number::Format' => {
+        'round' => sub {
+            my($pkg, $class, $func, $args, $default_args) = @_;
+            my $n = 'Number::Format'->new(%$default_args);
+            sub { $n->round(@_); }
+        },
+        'number_format' => sub {
+            my($pkg, $class, $func, $args, $default_args) = @_;
+            my $n = 'Number::Format'->new(%$default_args, %$args);
+            sub { $n->format_number(@_); }
+        }
+      }
+    ];
+
+And write as the following:
+
+ use Util::Yours -number => [-args => {thousands_sep => "_", int_curr_symbol => '\'} ];
+ 
+ print number_format(100000); # 100_000
+ print number_price(100000);  # \100_000
+
+thousands_sep and int_curr_symbol are given to all of -number kind of function.
+
+=head2 DO SOMETHING WITHOUT EXPORTING ANYTHING
+
+ -strict => [
+    [ 'strict' => {
+        '.' => sub {
+           strict->import();
+           warnings->import();
+        },
+      }
+    ];
+
+This definition works like as pragma.
+
+ use Util::Yours -strict;
+
+function name '.' is special. This name is not exported and only execute the code in the definition.
+
 =head2 USE PLUGGABLE FEATURE FOR YOUR MODULE
 
 Just add a flag -Pluggbale.
@@ -909,13 +979,15 @@ And you can use it as the following.
   
   my $amazon = amazon; # get Net::Amazon object;
 
-Util::Any::Light can merge definition in plugins. If same kind is in several plugins, it works.
-But same kind and same function name is defined, one of them doesn't work.
-
 =head2 B<NOT> WORKING WITH EXPORTER-LIKE MODULES
 
 CPAN has some modules to export functions, for example L<Exporter>, L<Exporter::Simple>, L<Sub::Exporter> and L<Perl6::Export::Attrs>.
 Util::Any::Light canB<not> work with such modules.
+
+ use Util::Any::Light -Base;
+ use parent qw/Exporter/;
+
+It B<doesn't> work.
 
 =head1 AUTHOR
 
@@ -925,7 +997,7 @@ Ktat, C<< <ktat at cpan.org> >>
 
 Please report any bugs or feature requests to
 C<bug-util-any at rt.cpan.org>, or through the web interface at
-L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Util-Any>.
+L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=Util-Any-Light>.
 I will be notified, and then you'll automatically be notified of progress on
 your bug as I make changes.
 
@@ -941,19 +1013,19 @@ You can also look for information at:
 
 =item * AnnoCPAN: Annotated CPAN documentation
 
-L<http://annocpan.org/dist/Util-Any>
+L<http://annocpan.org/dist/Util-Any-Light>
 
 =item * CPAN Ratings
 
-L<http://cpanratings.perl.org/d/Util-Any>
+L<http://cpanratings.perl.org/d/Util-Any-Light>
 
 =item * RT: CPAN's request tracker
 
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Util-Any>
+L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=Util-Any-Light>
 
 =item * Search CPAN
 
-L<http://search.cpan.org/dist/Util-Any>
+L<http://search.cpan.org/dist/Util-Any-Light>
 
 =back
 
