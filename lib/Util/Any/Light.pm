@@ -387,7 +387,7 @@ our $VERSION = '0.01';
 
 Create your own utility module:
 
-    package YouUtil;
+    package YourUtil;
 
     use Util::Any::Light -Base;
 
@@ -433,12 +433,12 @@ If you want to import functions with your own prefix.
 
 If you want to import functions as different name.
 
-   use YouUtil -list => {uniq => {-as => 'listuniq'}};
+   use YourUtil -list => {uniq => {-as => 'listuniq'}};
    print listuniq qw/1, 0, 1, 2, 3, 3/;
 
 When you use both renaming and your own prefix ?
 
-   use YouUtil -list => {uniq => {-as => 'listuniq'}, -prefix => "l_"};
+   use YourUtil -list => {uniq => {-as => 'listuniq'}, -prefix => "l_"};
    print listuniq qw/1, 0, 1, 2, 3, 3/;
    print l_min qw/1, 0, 1, 2, 3, 3/;
    # the following is NG
@@ -466,7 +466,7 @@ For example:
 Util::Any::Light B<doesn't> export any utility functions.
 This is only for creating utility modules. It is no use itself.
 The way to define utility functions is as nealy same as Util::Any.
-But the following feature of Util::Any is removed:
+But the following features of Util::Any is removed:
 
 =over 4
 
@@ -481,6 +481,8 @@ Uti::Any can work with Export-like modules. But Util::Any::Light cannot.
 =item * use Data::Util::install_subroutine instead of ExportTo
 
 It is faster than ExportTo.
+ExportTo don't export when function is already defined.
+install_subroutine warn C<redefine> warnings.
 
 =back
 
@@ -539,6 +541,9 @@ Scalar is module name. Array ref is module name and its prefix.
 
  sub utils { return { list => ['List::Utils'] } }
  sub utils { return { list => [['List::Utils', 'prefix_']] } }
+
+
+See L<OTHER WAY TO EXPORT FUNCTIONS> for more detail.
 
 =head1 HOW TO USE
 
@@ -624,9 +629,9 @@ If you pass debug value, warn or die.
 
 Like as Sub::Exporter, Util::Any::Light can export function name as you like.
 
- use Util::Yours -list => {-prefix => 'list__', miin => {-as => "lmin"}};
+ use Util::Yours -list => {-prefix => 'list__', min => {-as => "lmin"}};
 
-functions in -list, are exported with prefix "list__" except 'min' and 'min' is exported as 'lmin'.
+functions in -list, are exported with prefix "list__" except 'min'. 'min' is exported as 'lmin'.
 
 =head1 PRIORITY OF THE WAYS TO CHANGE FUNCTION NAME
 
@@ -653,9 +658,7 @@ Their priority is the following.
 
 =back
 
-If you use 3 and 4 in same time, 4 is ignored.
-
-=head1 NOTE ABOUT all KEYWORD
+=head1 NOTE ABOUT C<all> KEYWORD
 
 B<all> is special keyword, so it has some restriction.
 
@@ -710,7 +713,7 @@ That's too bad. If you use C<< smart_rename => 1 >> instead:
 
 rename rule is represented in _create_smart_rename in Util::Any::Light.
 
-=head2 CHANGE smart_rename BEHAVIOUR
+=head2 CHANGE C<smart_rename> BEHAVIOUR
 
 To define _create_smart_rename, you can change smart_rename behaviour.
 _create_smart_rename get 2 argument, package name and kind of utilitiy,
