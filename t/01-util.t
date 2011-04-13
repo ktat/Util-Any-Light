@@ -47,7 +47,7 @@ my @tests = (
 for my $test (@tests) {
   my ($args, $config) = (@{$test->[0]});
   my $ret = $test->[1];
-  my ($arg, $want) = UtilAnyList ->_arrange_args($args, UtilAnyList->utils, 'main');
+  my ($arg, $want) = UtilAnyList ->_arrange_args(0, $args, UtilAnyList->utils, 'main');
   is_deeply($arg,  $ret->[0]);
   is_deeply($want, $ret->[1]);
 }
